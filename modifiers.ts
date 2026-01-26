@@ -1,4 +1,5 @@
-import { getSkillString, joinWithCommasAndAnd } from "./rendering.js";
+import { getSkillString } from "./rendering.js";
+import { joinWithCommasAndAnd } from "./src/utils/index.js";
 import { getSkill } from "./simulation.js";
 import { SkillType } from "./skills.js";
 

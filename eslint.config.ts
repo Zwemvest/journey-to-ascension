@@ -5,6 +5,9 @@ import { defineConfig } from "eslint/config";
 
 export default defineConfig([
   {
+    ignores: ["build/**", "coverage/**", "node_modules/**", "lighthouserc.js"],
+  },
+  {
     files: ["**/*.{js,mjs,cjs,ts,mts,cts}"],
     plugins: { js }, 
     extends: ["js/recommended"], 

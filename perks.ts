@@ -1,7 +1,7 @@
 import { GAMESTATE } from "./game.js";
 import { PerkSkillModifierList } from "./modifiers.js";
 import { PrestigeUnlockType } from "./prestige_upgrades.js";
-import { formatNumber } from "./rendering.js";
+import { formatNumber } from "./src/utils/index.js";
 import {
     DIVINE_SPARK_TEXT,
     ENERGY_TEXT,
