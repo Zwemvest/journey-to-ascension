@@ -1,0 +1,10 @@
+# ZAP Baseline Rule Configuration
+# Format: rule_id	action	name
+# Actions: IGNORE, WARN, FAIL
+#
+# Common rules for static sites:
+10035	WARN	Strict-Transport-Security Header Not Set
+10038	WARN	Content Security Policy (CSP) Header Not Set
+10098	WARN	Cross-Domain Misconfiguration
+10109	WARN	Modern Web Application
+10202	WARN	Absence of Anti-CSRF Tokens
