@@ -14,6 +14,187 @@ import { joinWithCommasAndAnd, formatNumber, createChildElement, areArraysEqual 
 
 // MARK: Helpers
 
+interface NumericInputOptions {
+    min?: number;
+    max?: number;
+    step?: number;
+    largeStep?: number;
+    initialValue: number;
+    onChange: (value: number) => void;
+    ariaLabel?: string;
+}
+
+interface NumericInputResult {
+    input: HTMLInputElement;
+    destroy: () => void;
+}
+
+function createNumericInput(parent: Element, options: NumericInputOptions): NumericInputResult {
+    const { min = 1, max = 99, step = 1, largeStep = 10, initialValue, onChange, ariaLabel } = options;
+
+    const wrapper = createChildElement(parent, "div");
+    wrapper.className = "numeric-input-wrapper";
+
+    const input = createChildElement(wrapper, "input") as HTMLInputElement;
+    input.className = "numeric-input";
+    input.type = "number";
+    input.value = `${initialValue}`;
+    input.min = `${min}`;
+    input.max = `${max}`;
+    if (ariaLabel) {
+        input.setAttribute("aria-label", ariaLabel);
+    }
+
+    const buttonsContainer = createChildElement(wrapper, "div");
+    buttonsContainer.className = "numeric-input-buttons";
+
+    const incrementBtn = createChildElement(buttonsContainer, "button") as HTMLButtonElement;
+    incrementBtn.className = "numeric-input-button numeric-input-increment";
+    incrementBtn.type = "button";
+    incrementBtn.setAttribute("aria-label", "Increment");
+
+    const decrementBtn = createChildElement(buttonsContainer, "button") as HTMLButtonElement;
+    decrementBtn.className = "numeric-input-button numeric-input-decrement";
+    decrementBtn.type = "button";
+    decrementBtn.setAttribute("aria-label", "Decrement");
+
+    function clampValue(value: number): number {
+        if (isNaN(value)) return min;
+        return Math.max(min, Math.min(max, value));
+    }
+
+    function updateButtonStates() {
+        const current = getCurrentValue();
+        decrementBtn.classList.toggle("disabled", current <= min);
+        incrementBtn.classList.toggle("disabled", current >= max);
+    }
+
+    function updateValue(newValue: number) {
+        const clamped = clampValue(newValue);
+        input.value = `${clamped}`;
+        updateButtonStates();
+        onChange(clamped);
+    }
+
+    function getCurrentValue(): number {
+        return parseInt(input.value) || min;
+    }
+
+    updateButtonStates();
+
+    decrementBtn.addEventListener("click", () => {
+        updateValue(getCurrentValue() - step);
+    });
+
+    incrementBtn.addEventListener("click", () => {
+        updateValue(getCurrentValue() + step);
+    });
+
+    // Hold-to-repeat functionality
+    let holdTimeout: number | null = null;
+    let holdInterval: number | null = null;
+    const HOLD_DELAY = 400;
+    const HOLD_REPEAT = 80;
+
+    function startHold(delta: number) {
+        stopHold();
+        holdTimeout = window.setTimeout(() => {
+            holdInterval = window.setInterval(() => {
+                updateValue(getCurrentValue() + delta);
+            }, HOLD_REPEAT);
+        }, HOLD_DELAY);
+    }
+
+    function stopHold() {
+        if (holdTimeout) {
+            clearTimeout(holdTimeout);
+            holdTimeout = null;
+        }
+        if (holdInterval) {
+            clearInterval(holdInterval);
+            holdInterval = null;
+        }
+    }
+
+    decrementBtn.addEventListener("mousedown", () => startHold(-step));
+    incrementBtn.addEventListener("mousedown", () => startHold(step));
+
+    // Document-level mouseup to catch releases anywhere
+    document.addEventListener("mouseup", stopHold);
+
+    // Keyboard support
+    input.addEventListener("keydown", (event: KeyboardEvent) => {
+        if (event.key === "ArrowUp") {
+            event.preventDefault();
+            updateValue(getCurrentValue() + step);
+        } else if (event.key === "ArrowDown") {
+            event.preventDefault();
+            updateValue(getCurrentValue() - step);
+        } else if (event.key === "PageUp") {
+            event.preventDefault();
+            updateValue(getCurrentValue() + largeStep);
+        } else if (event.key === "PageDown") {
+            event.preventDefault();
+            updateValue(getCurrentValue() - largeStep);
+        } else if (event.key === "Enter") {
+            updateValue(getCurrentValue());
+            input.blur();
+        }
+    });
+
+    // Wheel handler for when focused (works anywhere on page)
+    function handleWheelFocused(event: WheelEvent) {
+        if (document.activeElement !== input) return;
+        event.preventDefault();
+        const delta = event.deltaY < 0 ? step : -step;
+        updateValue(getCurrentValue() + delta);
+    }
+
+    // Wheel handler for when hovering (works on the wrapper)
+    function handleWheelHover(event: WheelEvent) {
+        if (document.activeElement === input) return; // Don't double-handle if focused
+        event.preventDefault();
+        const delta = event.deltaY < 0 ? step : -step;
+        updateValue(getCurrentValue() + delta);
+    }
+
+    // Hover-to-scroll: works when hovering over the input
+    wrapper.addEventListener("wheel", handleWheelHover, { passive: false });
+
+    // Focus-to-scroll: works anywhere when input is focused
+    function handleFocus() {
+        input.select();
+        document.addEventListener("wheel", handleWheelFocused, { passive: false });
+    }
+
+    function handleFocusOut() {
+        updateValue(getCurrentValue());
+        document.removeEventListener("wheel", handleWheelFocused);
+    }
+
+    input.addEventListener("focus", handleFocus);
+    input.addEventListener("focusout", handleFocusOut);
+
+    // Cleanup function to remove all document-level listeners
+    function destroy() {
+        document.removeEventListener("mouseup", stopHold);
+        document.removeEventListener("wheel", handleWheelFocused);
+        stopHold();
+    }
+
+    return { input, destroy };
+}
+
+export function joinWithCommasAndAnd(strings: string[]): string {
+    if (strings.length === 0) return "";
+    if (strings.length === 1) return strings[0] as string;
+    if (strings.length === 2) return `${strings[0]} and ${strings[1]}`;
+
+    const allButLast = strings.slice(0, -1).join(", ");
+    const last = strings[strings.length - 1];
+    return `${allButLast}, and ${last}`;
+}
+
 function createConfirmationOverlay(header_text: string, description_text: string, on_confirm: () => void) {
     const overlay = RENDERING.confirmation_overlay_element;
     overlay.innerHTML = "";
@@ -863,7 +1044,7 @@ function sortItems(items: [type: ItemType, amount: number][]) {
     });
 }
 
-function setupAutoUseItemsControl() {
+function setupAutoUseItemsControl(parent: Element) {
     if (!hasPerk(PerkType.Amulet)) {
         return;
     }
@@ -890,7 +1071,7 @@ function setupAutoUseItemsControl() {
         return tooltip;
     });
 
-    RENDERING.controls_list_element.appendChild(item_control);
+    parent.appendChild(item_control);
 }
 
 function updateItems() {
@@ -1727,12 +1908,18 @@ function handleEvents() {
 function setupControls() {
     RENDERING.controls_list_element.innerHTML = "";
 
-    setupRepeatTasksControl();
+    // First row: toggle buttons
+    const toggles_row = createChildElement(RENDERING.controls_list_element, "div");
+    toggles_row.className = "controls-row";
+
+    setupRepeatTasksControl(toggles_row);
+    setupAutoUseItemsControl(toggles_row);
+
+    // Second row: automation (with border)
     setupAutomationControls();
-    setupAutoUseItemsControl();
 }
 
-function setupRepeatTasksControl() {
+function setupRepeatTasksControl(parent: Element) {
     const rep_control = document.createElement("button");
     rep_control.className = "element";
 
@@ -1751,7 +1938,7 @@ function setupRepeatTasksControl() {
         return "Toggle between repeating Tasks if they have multiple reps, or only doing a single rep<br>When repeating, the Task tooltip will show the numbers for doing all remaining reps rather than just one<br><br>Hotkey: R";
     });
 
-    RENDERING.controls_list_element.appendChild(rep_control);
+    parent.appendChild(rep_control);
 }
 
 // MARK: Controls - Automation
@@ -1771,18 +1958,37 @@ function setupAutomationControls() {
         return;
     }
 
-    const automation = document.createElement("div");
-    automation.className = "automation";
+    const automation_div = createChildElement(RENDERING.controls_list_element, "div");
+    automation_div.className = "automation";
 
-    const automation_text = document.createElement("div");
+    const automation_text = createChildElement(automation_div, "div");
     automation_text.className = "automation-text";
-    automation.textContent = "Automation";
+    automation_text.textContent = "Task Automation";
+
+    const automation_controls_div = createChildElement(automation_div, "div");
+    automation_controls_div.className = "automation-controls";
 
     const all_control = document.createElement("button");
-    const zone_control = document.createElement("button");
 
-    all_control.textContent = "All";
-    zone_control.textContent = "Zone";
+    function updateZoneButtonText() {
+        all_control.innerHTML = `To<br>Zone ${GAMESTATE.automation_end}`;
+    }
+    updateZoneButtonText();
+
+    const { input: until_zone_input } = createNumericInput(automation_controls_div, {
+        min: 1,
+        max: 99,
+        initialValue: GAMESTATE.automation_end,
+        onChange: (value) => {
+            GAMESTATE.automation_end = value;
+            updateZoneButtonText();
+        },
+        ariaLabel: "Target zone for automation"
+    });
+
+    automation_controls_div.appendChild(all_control);
+    const zone_control = createChildElement(automation_controls_div, "button");
+    zone_control.textContent = "Current Zone";
 
     all_control.className = GAMESTATE.automation_mode == AutomationMode.All ? "on" : "off";
     zone_control.className = GAMESTATE.automation_mode == AutomationMode.Zone ? "on" : "off";
@@ -1794,8 +2000,8 @@ function setupAutomationControls() {
         toggleAutomationMode(AutomationMode.Zone);
     });
 
-    setupTooltip(all_control, function () { return `Automate ${all_control.textContent}`; }, function () {
-        let tooltip = "Toggle between automating Ttasks in all zones, and not automating";
+    setupTooltip(all_control, function () { return `Automate To Zone ${GAMESTATE.automation_end}`; }, function () {
+        let tooltip = `Toggle between no automation, and automating Tasks until the specified Zone (${GAMESTATE.automation_end}) is reached`;
         tooltip += "<br>Right-click Tasks to designate them as automated";
         tooltip += "<br>They'll be executed in the order you right-clicked them, as indicated by the number in their corner";
         tooltip += "<br><br>Hotkey: A";
@@ -1804,7 +2010,7 @@ function setupAutomationControls() {
     });
 
     setupTooltip(zone_control, function () { return `Automate ${zone_control.textContent}`; }, function () {
-        let tooltip = "Toggle between automating Tasks in the current zone, and not automating";
+        let tooltip = "Toggle between no automation, automating Tasks in the current zone";
         tooltip += "<br>Right-click Tasks to designate them as automated";
         tooltip += "<br>They'll be executed in the order you right-clicked them, as indicated by the number in their corner";
         tooltip += "<br><br>Hotkey: Z";
@@ -1812,10 +2018,11 @@ function setupAutomationControls() {
         return tooltip;
     });
 
-    automation.appendChild(automation_text);
-    automation.appendChild(all_control);
-    automation.appendChild(zone_control);
-    RENDERING.controls_list_element.appendChild(automation);
+    setupTooltip(until_zone_input, function () { return `Specify Target Zone`; }, function () {
+        const tooltip = "The Zone you specify here will be used by the 'To Zone' automation";
+
+        return tooltip;
+    });
 }
 
 // MARK: Extra stats
@@ -2343,7 +2550,28 @@ export function updateRendering() {
     }
 }
 
+function inputIsBeingHandled() {
+    const activeElement = document.activeElement;
+    if (!activeElement) {
+        return false;
+    }
+
+    const isInputField = activeElement.tagName === "INPUT" ||
+        activeElement.tagName === "TEXTAREA" ||
+        activeElement.getAttribute("contenteditable") === "true";
+    return isInputField;
+}
+
 export function handleHotkeyReleased(event: KeyboardEvent) {
+    // Checked before input handling, since you might be looking at tooltips still
+    if (GAMESTATE.manual_tooltips && event.key == "Control") {
+        hideTooltip();
+    }
+    
+    if (inputIsBeingHandled()) {
+        return;
+    }
+
     if (hasPerk(PerkType.Amulet)) {
         if (event.key == "a") {
             toggleAutomationMode(AutomationMode.All);
@@ -2358,8 +2586,6 @@ export function handleHotkeyReleased(event: KeyboardEvent) {
     } else if (event.key == "r") {
         GAMESTATE.repeat_tasks = !GAMESTATE.repeat_tasks;
         setupControls();
-    } else if (GAMESTATE.manual_tooltips && event.key == "Control") {
-        hideTooltip();
     }
 }
 
